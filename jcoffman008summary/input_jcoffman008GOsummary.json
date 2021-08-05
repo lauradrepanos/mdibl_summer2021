@@ -1,0 +1,7 @@
+{
+  "Z_normalized":"data/jcoffman_008_merged_nogeneduplicates_Z_normalized.txt",
+  "deseq3hb":"data/jcoffman_008.klf9_multiTime_2021_merged_3hb_nogeneduplicates.DESeq2_out.tsv",
+  "deseqlightson": "data/jcoffman_008.klf9_multiTime_2021_merged_lightson_nogeneduplicates.DESeq2_out.tsv",
+  "deseq2.5ha":"data/jcoffman_008.klf9_multiTime_2021_merged_2.5ha_nogeneduplicates.DESeq2_out.tsv",
+  "ens_GOterms": "data/ens101_zfish_GOterms.txt"
+}

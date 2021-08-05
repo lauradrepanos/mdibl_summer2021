@@ -1,0 +1,26 @@
+{
+  "experiment_name": "jcoffman_008",
+
+  "filepath": {
+      "Z_normalized":"data/jcoffman_008_merged_nogeneduplicates_Z_normalized.txt",
+      "loading_scores":"data/jcoffman_008_merged_nogeneduplicates_meaningful_pc_loading_scores.txt",
+      "pca_eigenvalues": "data/jcoffman_008_merged_nogeneduplicates_pca_eigenvalues.txt",
+      "design_meaningful":"data/jcoffman_008_merged_nogeneduplicates_design_meaningful.txt",
+
+      "rlog": "data/jcoffman_008.klf9_multiTime_2021_merged_nogeneduplicates.rlog.tsv",
+      "deseq": "data/jcoffman_008.klf9_multiTime_2021_merged_nogeneduplicates_PC1_time.DESeq2_out.tsv",
+      "deseq3hb":"data/jcoffman_008.klf9_multiTime_2021_merged_3hb_nogeneduplicates.DESeq2_out.tsv",
+      "deseqlightson": "data/jcoffman_008.klf9_multiTime_2021_merged_lightson_nogeneduplicates.DESeq2_out.tsv",
+      "deseq2.5ha":"data/jcoffman_008.klf9_multiTime_2021_merged_2.5ha_nogeneduplicates.DESeq2_out.tsv"
+  },
+    
+    "design_variables":{
+        "treatment_variable":"genetics",
+        "control":"WT",
+        "treatment":"KO",
+        "separator_variable": "time",
+        "num_meaningful_pcs": 4,
+        "normalization": "rlog"
+    }
+    
+}

@@ -1,0 +1,206 @@
+---
+output: 
+  html_document:
+params: 
+  genename: 
+
+  experiment_name: 
+  treatment_variable: 
+  control:
+  treatment: 
+  separator_variable: 
+  num_meaningful_pcs: 
+  
+
+  
+  filepath_Z_normalized: 
+  filepath_loading_scores: 
+  filepath_pca_eigenvalues:
+  filepath_design_meaningful: 
+
+
+title: "Summary of `r params$genename` behavior in `r params$experiment_name`"
+
+---
+
+
+```{r setup,echo=FALSE,include=FALSE}
+
+#ABOUT: extracted gene-specific PCA summary from jcoffman008genesummary.Rmd (took out requirement of running DESEQ)
+## summarizes the behavior of a gene of interest using the pca output of an experiment
+#USAGE: run using Rscript runjcoffman008GeneSummary.R "genename"
+#output: geneSummary.html 
+#note: this script will use the parameters specified in runjcoffman008GeneSummary.R over the default params in this document
+
+library(tidyr)
+library(gridExtra)
+library(ggplot2)
+library(reshape2)
+library(stringr)
+library(knitr)
+
+######Saving useful output files as dataframes. Creates objects nonspecific to the gene
+
+#z-score (normalization that assumes normal distribution) from PCA 
+zscore<- read.delim(file= params$filepath_Z_normalized)
+##storing PCA gene loadings from the run with all samples
+pca<- read.delim(file= params$filepath_loading_scores)
+all_eigenvalues <- read.delim(file=params$filepath_pca_eigenvalues)
+#convert loadings by multiplying by the square root of the corresponding vector to get -1 to 1 distribution
+for(i in 1:params$num_meaningful_pcs){
+  pca[,i+1]<- pca[,i+1]*sqrt(all_eigenvalues$eigenvalue[i]) 
+} 
+all_design<- read.delim(file=params$filepath_design_meaningful)
+all_design$replicate <- as.factor(all_design$replicate)
+all_design[,params$separator_variable]<- as.factor(all_design[,params$separator_variable])
+
+#getting PCA results in format for plot 
+
+#error-checking: making sure user did not input more meaningful PCs than recognized by rpca
+design_col_num <- match("PC1", names(all_design))-1 #gives the number of columns before PC1 in the file  
+if((design_col_num+params$num_meaningful_pcs)>length(names(all_design))){
+  stop(paste("\n\n\n ********* WHY THE CODE FAILED!!: The number of meaningful principal components specified by the user in num_meaningful_pcs:  \n\t\t" ,params$num_meaningful_pcs, "\nexceeds the number of meaningful principal components in the rpca output.*********\n\n\n",sep=""))
+}
+long_pca<- melt(pca[c(1:(params$num_meaningful_pcs + 1))])
+
+
+##Separating the labels of file-based dataframes
+zscore<- separate(data = zscore, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+pca<- separate(data = pca, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+long_pca<- separate(data = long_pca, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+
+
+#these lines are what allow control to come before treatment (i.e. gene knockout) in plots 
+all_design[,params$treatment_variable]<- factor(all_design[,params$treatment_variable],levels=c(params$control,params$treatment))
+all_design$X<- factor(all_design$X,levels=all_design$X[order(all_design[,params$treatment_variable])])
+
+genename<- params$genename
+#controlled error message if the gene is not in the output files that the plots use
+if(genename %in% long_pca$GeneName==FALSE){
+  stop(paste("\n\n\n ********* WHY THE CODE FAILED!!: You entered the following gene name:  \n\t\t" ,genename, "\nThis is not a recognized gene name or it is insufficiently expressed in experiment. Please check capitalization or enter another gene.*********\n\n\n",sep=""))
+}
+
+#adding the zscore normalized counts of this gene from each of these samples to the design file
+design_genespecific<- all_design
+design_genespecific$target_gene_zscore<- as.numeric(t(subset(zscore,GeneName==genename))[c(3:ncol(zscore)),])
+
+###Facet plots to provide meaning to Principal Components. Only has to generate the plots if this is the first time running the script  
+
+facetplotpng<- paste(params$experiment_name,"PCAfacetplots.png",sep="")
+
+png(filename=facetplotpng, width=600, height=400)
+
+if(!file.exists(facetplotpng)){
+install.packages("patchwork",repos = "http://cran.us.r-project.org")
+library(patchwork)
+
+
+
+
+#adding the facet plot of PC1 as the first in the facet plot figure
+facetplotfigure <- ggplot(data=all_design, aes(x=X, y=all_design[,(design_col_num+1)],fill=all_design[,params$treatment_variable]))+geom_bar(stat="identity", position=position_dodge())+ scale_fill_manual(params$treatment_variable,values = c("black", "red")) +
+  facet_grid(. ~ all_design[,params$separator_variable], scales='free')+
+  geom_text(aes(label = replicate), vjust = "outward", size=3,color="blue")+
+  labs(y="Sample Loading")+
+  theme_bw()+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("PC1: ", round(all_eigenvalues[1,]$variance.percent,2), "% of variance ",sep=""))
+
+if(params$num_meaningful_pcs>1){
+  #adding the rest of meaningful PCs to the facet plot figure
+for( PC in c(2:params$num_meaningful_pcs)){
+facetplotfigure <- facetplotfigure+ ggplot(data=all_design, aes_string(x=all_design$X, y=all_design[,(design_col_num+ PC )],fill=all_design[,params$treatment_variable]))+geom_bar(stat="identity", position=position_dodge())+ scale_fill_manual(params$treatment_variable,values = c("black", "red")) +
+  facet_grid(. ~ all_design[,params$separator_variable], scales='free')+
+  geom_text(aes(label = replicate), vjust = "outward", size=3, color="blue")+
+  theme_bw()+
+  labs(y="Sample Loading")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("PC",PC,": ", round(all_eigenvalues[PC,]$variance.percent,2), "% of variance ",sep=""))
+
+}
+}
+
+  facetplotfigure
+
+  }else{
+  include_graphics(facetplotpng)
+  }
+  dev.off()
+
+###Creating plot to show relative PC loadings
+plot_geneInPCA <- ggplot(data=long_pca, aes(x=variable,y=value))+geom_violin()+
+  geom_point(data=subset(long_pca,GeneName==genename), color= "green",aes(y=value), size=4)+ theme(legend.position = "none", aspect.ratio = 1.5,panel.background = element_blank())+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="",y= "Gene Loading")+
+  ggtitle(paste("Relative ",genename," loadings in PCA of all samples",sep=""))
+
+plot_expression <- ggplot(data=design_genespecific, aes(x=X, y=target_gene_zscore,color=design_genespecific[,params$treatment_variable]))+geom_point(size=5)+scale_color_manual(params$treatment_variable,values = c("black","red")) + 
+  facet_grid(. ~ design_genespecific[,params$separator_variable], scales='free',switch="x")+
+  geom_text(aes(label = replicate), vjust = -.2, size=5,color="blue")+
+  theme_bw()+
+  labs(x="Sample", y= "zscore norm count")+
+  theme(aspect.ratio=2.5,
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("Z-score normalized ",genename, " counts separated by ", params$separator_variable, sep=""))
+
+```
+# {.tabset}
+
+## All Results
+
+``` {r displayAllPlots, out.width=c('40%', '30%','30%'), fig.show='hold', warning=FALSE, echo=FALSE}
+include_graphics(facetplotpng)
+plot_geneInPCA
+plot_expression
+```
+
+
+## PCA of `r params$experiment_name`
+PCA was conducted on `r params$experiment_name` to identify the dominating patterns of variance. The plots below split all samples by `r params$separator_variable` to demonstrate their loadings along each principal component, informing the pattern each principle component is capturing in relation to design variables. 
+
+``` {r displayfacetplots, out.width="150%", warning=FALSE, echo=FALSE}
+include_graphics(facetplotpng)
+
+```
+
+## `r genename` in PCA 
+
+<div class = "row">
+
+<div class = "col-md-6">
+```{r PCAgenespecific, echo=FALSE}
+
+plot_geneInPCA
+
+PCA_percentile_report <- c()
+for(PC in c(3:(params$num_meaningful_pcs+2))){
+  PCA_percentile_report[[length(PCA_percentile_report)+1]]<- paste((round(mean(pca[,PC] < subset(pca,GeneName==genename)[,PC] ) ,2)*100)," percentile for PC", (PC-2), separator="")
+}
+
+```
+</div>
+
+<div class = "col-md-4">
+<br><br>In the violin plots, `r genename` being at the top of the distribution of PC loadings indicates strong agreement with the patterns determined by that principal component. A loading near 0 indicates that `r genename` expression does not vary in relation to that pattern, and a loading at the bottom of the distribution suggests that `r genename` expression follows the opposite expression pattern. Compared to the distribution of loadings for all genes examined, `r genename` is loaded in the `r PCA_percentile_report`
+</div>
+</div>
+
+
+## `r genename` expression
+
+The plot below demonstrates how expression of `r genename` varies throughout `r params$experiment_name` by providing the normalized transcript counts from each sample.  
+
+```{r expression,echo=FALSE,warning=FALSE}
+
+plot_expression
+
+```

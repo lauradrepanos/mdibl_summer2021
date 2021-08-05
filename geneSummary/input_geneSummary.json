@@ -1,0 +1,19 @@
+{
+  "experiment_name": "metalightdark",
+
+  "filepath": {
+      "Z_normalized":"data/metalightdark_Z_normalized.txt",
+      "loading_scores":"data/metalightdark_meaningful_pc_loading_scores.txt",
+      "pca_eigenvalues": "data/metalightdark_pca_eigenvalues.txt",
+      "design_meaningful":"data/metalightdark_design_meaningful.txt"
+  },
+    
+    "design_variables":{
+        "treatment_variable":"treatment",
+        "control":"veh",
+        "treatment":"cort",
+        "separator_variable": "experiment_id",
+        "num_meaningful_pcs": 4
+    }
+    
+}

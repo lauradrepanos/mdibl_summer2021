@@ -1,0 +1,345 @@
+---
+output: 
+  html_document:
+params: 
+  genename: 
+  normalization: 
+
+  experiment_name: 
+  treatment_variable: 
+  control: 
+  treatment: 
+  separator_variable: 
+  num_meaningful_pcs: 
+  
+  filepath_Z_normalized: 
+  filepath_loading_scores: 
+  filepath_pca_eigenvalues: 
+  filepath_design_meaningful: 
+
+  filepath_rlog: 
+  filepath_deseq: 
+  filepath_deseq3hb:
+  filepath_deseqlightson: 
+  filepath_deseq2.5ha:
+
+title: "Summary of `r params$genename` behavior in `r params$experiment_name`"
+---
+
+```{r setup,echo=FALSE,include=FALSE}
+
+#USAGE: run using Rscript runjcoffman008GeneSummary.R "genename"
+
+library(tidyr)
+library(gridExtra)
+library(ggplot2)
+library(reshape2)
+library(stringr)
+library(knitr)
+
+print("loading files...")
+####-----------------------Saving useful output files as dataframes. Creates objects nonspecific to the gene------------------
+
+#rlog normalized counts of genes (from DESEQ output) this transformation takes into account variation of counts between samples reduces noise.
+rlog <- read.delim(file= params$filepath_rlog)
+#z-score (normalization that assumes normal distribution) from PCA 
+zscore<- read.delim(file= params$filepath_Z_normalized)
+##storing PCA gene loadings from the run with all samples
+pca<- read.delim(file= params$filepath_loading_scores)
+all_eigenvalues <- read.delim(file=params$filepath_pca_eigenvalues)
+#convert loadings by multiplying by the square root of the corresponding vector to get -1 to 1 distribution
+for(i in 1:params$num_meaningful_pcs){
+  pca[,i+1]<- pca[,i+1]*sqrt(all_eigenvalues$eigenvalue[i]) 
+} 
+all_design<- read.delim(file=params$filepath_design_meaningful)
+all_design$replicate <- as.factor(all_design$replicate)
+all_design[,params$separator_variable]<- as.factor(all_design[,params$separator_variable])
+
+#storing DESEQ results
+deseq <- read.delim(file= params$filepath_deseq)
+dsq.3hb <- read.delim(file=params$filepath_deseq3hb)
+dsq.lightson<- read.delim(file= params$filepath_deseqlightson)
+dsq.2.5ha<- read.delim(file= params$filepath_deseq2.5ha)
+
+#getting PCA results in format for plot 
+
+#error-checking: making sure user did not input more meaningful PCs than recognized by rpca
+design_col_num <- match("PC1", names(all_design))-1 #gives the number of columns before PC1 in the file  
+if((design_col_num+params$num_meaningful_pcs)>length(names(all_design))){
+  stop(paste("\n\n\n ********* WHY THE CODE FAILED!!: The number of meaningful principal components specified by the user in num_meaningful_pcs:  \n\t\t" ,params$num_meaningful_pcs, "\nexceeds the number of meaningful principal components in the rpca output.*********\n\n\n",sep=""))
+}
+long_pca<- melt(pca[c(1:(params$num_meaningful_pcs + 1))])
+
+#getting DESEQ results in format for plot 
+names(dsq.3hb)[names(dsq.3hb) == "baseMean"] <- "baseMean3hb"
+names(dsq.3hb)[names(dsq.3hb) == "log2FoldChange"] <- "3hb"
+names(dsq.3hb)[names(dsq.3hb) == "padj"] <- "padj3hb"
+names(dsq.lightson)[names(dsq.lightson) == "baseMean"] <- "baseMeanlightson"
+names(dsq.lightson)[names(dsq.lightson) == "log2FoldChange"] <- "lightson"
+names(dsq.lightson)[names(dsq.lightson) == "padj"] <- "padjlightson"
+names(dsq.2.5ha)[names(dsq.2.5ha) == "baseMean"] <- "baseMean2.5ha"
+names(dsq.2.5ha)[names(dsq.2.5ha) == "log2FoldChange"] <- "2.5ha"
+names(dsq.2.5ha)[names(dsq.2.5ha) == "padj"] <- "padj2.5ha"
+dsq_fc.merge1 <-merge(dsq.3hb[,c("X","3hb")],dsq.lightson[,c("X","lightson")])
+dsq_fc.merge2<- merge(dsq_fc.merge1,dsq.2.5ha[,c("X","2.5ha")])
+long_dsq_fc<- melt(dsq_fc.merge2)
+names(long_dsq_fc)[names(long_dsq_fc)=="variable"]<- "time"
+names(long_dsq_fc)[names(long_dsq_fc)=="value"]<- "log2FoldChange"
+dsq_padj.merge1<- merge(dsq.3hb[,c("X","padj3hb")],dsq.lightson[,c("X","padjlightson")])
+dsq_padj.merge2<- merge(dsq_padj.merge1,dsq.2.5ha[,c("X","padj2.5ha")])
+long_dsq_padj<- melt(dsq_padj.merge2)
+names(long_dsq_padj)[names(long_dsq_padj)=="variable"]<- "time"
+long_dsq_padj$time<- str_replace_all(long_dsq_padj$time,"padj","")
+names(long_dsq_padj)[names(long_dsq_padj)=="value"]<- "padj"
+dsq_mean.merge1<- merge(dsq.3hb[,c("X","baseMean3hb")],dsq.lightson[,c("X","baseMeanlightson")])
+dsq_mean.merge2<- merge(dsq_mean.merge1,dsq.2.5ha[,c("X","baseMean2.5ha")])
+long_dsq_mean<- melt(dsq_mean.merge2)
+names(long_dsq_mean)[names(long_dsq_mean)=="variable"]<- "time"
+long_dsq_mean$time<- str_replace_all(long_dsq_mean$time,"baseMean","")
+names(long_dsq_mean)[names(long_dsq_mean)=="value"]<- "baseMean"
+long_dsq.merge1<- merge(long_dsq_fc,long_dsq_padj,by = intersect(names(long_dsq_fc), names(long_dsq_padj)))
+long_dsq<-merge(long_dsq.merge1,long_dsq_mean, by = intersect(names(long_dsq_fc), names(long_dsq_padj)))
+
+##Separating the labels of file-based dataframes
+rlog<- separate(data = rlog, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+zscore<- separate(data = zscore, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+pca<- separate(data = pca, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+deseq<- separate(data = deseq, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+dsq.3hb<- separate(data = dsq.3hb, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+dsq.lightson<- separate(data = dsq.lightson, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+dsq.2.5ha<- separate(data = dsq.2.5ha, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+long_pca<- separate(data = long_pca, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+long_dsq<- separate(data = long_dsq, col = X, into = c("GeneID", "GeneName"), sep = "\\_",extra="merge")
+
+
+#these lines are what allow control to come before treatment (i.e. gene knockout) in plots 
+all_design[,params$treatment_variable]<- factor(all_design[,params$treatment_variable],levels=c(params$control,params$treatment))
+all_design$X<- factor(all_design$X,levels=all_design$X[order(all_design[,params$treatment_variable])])
+
+genename<- params$genename
+#controlled error message if the gene is not in the output files that the plots use
+if(genename %in% long_dsq$GeneName==FALSE | genename %in% long_pca$GeneName==FALSE){
+  stop(paste("\n\n\n ********* WHY THE CODE FAILED!!: You entered the following gene name:  \n\t\t" ,genename, "\nThis is not a recognized gene name or it is insufficiently expressed in experiment. Please check capitalization or enter another gene.*********\n\n\n",sep=""))
+}
+
+#adding the rlog and zscore normalized counts of this gene from each of these samples to the design file
+design_genespecific<- all_design
+design_genespecific$target_gene_rlog<- as.numeric(t(subset(rlog,GeneName==genename))[c(3:ncol(rlog)),])
+design_genespecific$target_gene_zscore<- as.numeric(t(subset(zscore,GeneName==genename))[c(3:ncol(zscore)),])
+
+
+print("generating plots...")
+#---------------------------------------------------plots that go in the report-------------------------------
+
+###Facet plots to provide meaning to Principal Components. Only has to generate the plots if this is the first time running the script  
+
+facetplotpng<- paste(params$experiment_name,"PCAfacetplots.png",sep="")
+
+png(filename=facetplotpng, width=600, height=400)
+
+if(!file.exists(facetplotpng)){
+if (!requireNamespace("patchwork", quietly = TRUE)){
+  install.packages("patchwork",repos = "http://cran.us.r-project.org")
+}
+library(patchwork)
+
+#adding the facet plot of PC1 as the first in the facet plot figure
+facetplotfigure <- ggplot(data=all_design, aes(x=X, y=all_design[,(design_col_num+1)],fill=all_design[,params$treatment_variable]))+geom_bar(stat="identity", position=position_dodge())+ scale_fill_manual(params$treatment_variable,values = c("black", "red")) +
+  facet_grid(. ~ all_design[,params$separator_variable], scales='free')+
+  labs(y="Sample Loading")+
+  theme_bw()+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("PC1: ", round(all_eigenvalues[1,]$variance.percent,2), "% of variance ",sep=""))
+
+if(params$num_meaningful_pcs>1){
+  #adding the rest of meaningful PCs to the facet plot figure
+for( PC in c(2:params$num_meaningful_pcs)){
+facetplotfigure <- facetplotfigure+ ggplot(data=all_design, aes_string(x=all_design$X, y=all_design[,(design_col_num+ PC )],fill=all_design[,params$treatment_variable]))+geom_bar(stat="identity", position=position_dodge())+ scale_fill_manual(params$treatment_variable,values = c("black", "red")) +
+  facet_grid(. ~ all_design[,params$separator_variable], scales='free')+
+  theme_bw()+
+  labs(y="Sample Loading")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("PC",PC,": ", round(all_eigenvalues[PC,]$variance.percent,2), "% of variance ",sep=""))
+
+}
+}
+
+  facetplotfigure
+
+  }else{
+  include_graphics(facetplotpng)
+  }
+  dev.off()
+
+###Creating plot to show relative PC loadings
+plot1_PCAviolin <- ggplot(data=long_pca, aes(x=variable,y=value))+geom_violin()+
+  geom_point(data=subset(long_pca,GeneName==genename), color= "green",aes(y=value), size=4)+ theme(legend.position = "none", aspect.ratio = 1.5,panel.background = element_blank())+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="",y= "Gene Loading")+
+  ggtitle(paste("Relative ",genename," loadings in PCA of all samples",sep=""))
+
+#examine replicate effect: plot sample's PC1 loading vs. target gene expression level (zscore norm htseq count)
+#if the gene is associated with the replicate effect it will have a x=y or x=-y distribution of samples
+plot2_repeffect <- ggplot(design_genespecific, aes(x=PC1, y=target_gene_zscore, label=replicate,color=all_design[,params$treatment_variable],pch=all_design[,params$separator_variable]))+geom_point(size=4) +scale_color_manual(params$treatment_variable,values = c("black", "red")) + scale_shape_manual(params$separator_variable,values=c(16, 17, 15))+
+  geom_vline(xintercept=0,linetype="dashed")+ geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="PC1 loading of sample", y= paste("zscore-norm count of ", genename, " in sample",sep=""))+
+  ggtitle(paste("Is ", genename, " expression associated with the replicate effect?",sep=""))+ theme( aspect.ratio = 1,panel.background = element_blank())
+
+#plotting expression of gene across experiment
+if(params$normalization=="zscore"){
+  plot3_expression<- ggplot(data=design_genespecific, aes(x=X, y=target_gene_zscore,color=design_genespecific[,params$treatment_variable]))+geom_point(size=5)+scale_color_manual(params$treatment_variable,values = c("black","red")) + 
+  facet_grid(. ~ design_genespecific[,params$separator_variable], scales='free',switch="x")+
+  geom_text(aes(label = replicate), vjust = -.2, size=5,color="blue")+
+  theme_bw()+
+  labs(x="Sample", y= "zscore norm count")+
+  theme(aspect.ratio=2.5,
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("Z-score normalized ",genename, " counts separated by ", params$separator_variable, sep=""))
+
+}else{
+  plot3_expression<- ggplot(data=design_genespecific, aes(x=X, y=target_gene_rlog,color=design_genespecific[,params$treatment_variable]))+geom_point(size=5)+scale_color_manual(params$treatment_variable,values = c("black","red")) + 
+  facet_grid(. ~ design_genespecific[,params$separator_variable], scales='free',switch="x")+
+  geom_text(aes(label = replicate), vjust = -.2, size=5,color="blue")+
+  theme_bw()+
+  labs(x="Sample", y= "rlog norm count")+
+  theme(aspect.ratio=2.5,
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  ggtitle(paste("rlog normalized ",genename, " counts separated by ", params$separator_variable, sep=""))
+}
+
+## violin plot of FC of all genes at the different times with specific gene as a point
+#to manage the scale of the plot, cutoff at logFoldChange (-3,3) unless the min/max is lower/higher
+fcmin <- -3
+fcmax <- 3 
+if(any(subset(long_dsq,GeneName==genename)$log2FoldChange<fcmin)){
+  fcmin<- min(subset(long_dsq,GeneName==genename)$log2FoldChange)
+}
+if(any(subset(long_dsq,GeneName==genename)$log2FoldChange>fcmax)){
+  fcmax<- max(subset(long_dsq,GeneName==genename)$log2FoldChange)
+}
+plot4_DESEQViolin<- ggplot(data=long_dsq, aes(x=time,y=log2FoldChange))+geom_violin()+
+  ylim(fcmin,fcmax)+
+  geom_point(data=subset(long_dsq,GeneName==genename),aes(y=log2FoldChange),color="green",size=4)+ 
+  geom_hline(yintercept=0,linetype="dashed")+
+  theme(legend.position = "none", aspect.ratio = 1.5,panel.background = element_blank())+
+  labs(x=params$separator_variable, y= "log2 Fold Change (klf9-/- vs. wildtype)")+
+  ggtitle(paste("Effect of klf9-knockout on ",genename," expression \ncompared to all genes",sep=""))
+
+
+# focus on time-dependent effect: plot of FC of this gene at different times labeled with mean count and padj
+plot5_DESEQ<- ggplot(data=subset(long_dsq,GeneName==genename), aes(x=time,y=log2FoldChange))+geom_bar(stat="identity", position=position_dodge(),fill="green")+
+  facet_grid(. ~ time, scales='free')+
+  geom_text(data=subset(long_dsq,GeneName==genename),aes(label = paste("padj: ",round(padj,2),"\n count: ",round(baseMean,0),sep="")),vjust="inward", size=3)+
+  geom_hline(yintercept=0)+
+  theme(legend.position = "none",
+        aspect.ratio = 1.5,
+        axis.title.x=element_blank(),
+        panel.background = element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+ 
+  labs(x=params$separator_variable, y= "log2 Fold Change (klf9-/- vs. wildtype)")+
+  ggtitle(paste("Effect of klf9-knockout on ",genename," expression",sep=""))
+
+#MA plot
+plot6_MA <- ggplot(data=deseq, aes(x=log2(baseMean),y=log2FoldChange))+geom_point(size=1,color="black")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  geom_point(data=subset(deseq,GeneName==genename),size=4,pch=18,color="green")+
+  theme(legend.position = "none", aspect.ratio = 1.5,panel.background = element_blank())+
+  labs(x="log2 mean transcript count (normalized for sequencing depth)", y= "log2 Fold Change (klf9-/- vs. wildtype)")+
+  ggtitle(paste("All ",params$experiment_name," WT v. KO with ",genename," (padj= ", round(subset(deseq,GeneName==genename)$padj,2),")",  sep=""))
+
+  
+##----------------------------------------beginning of report------------------------------------------
+
+```
+
+# {.tabset}
+
+
+## All Results 
+
+
+``` {r displayAllPCAandExpressionPlots, out.width=c('40%', '30%','30%'), fig.show='hold', warning=FALSE, echo=FALSE}
+include_graphics(facetplotpng)
+plot1_PCAviolin
+plot3_expression
+```
+``` {r displayAllDESeqPlots, out.width=c('35%', '40%','25%'), fig.show='hold', warning=FALSE, echo=FALSE}
+plot4_DESEQViolin
+plot5_DESEQ
+plot6_MA
+```
+
+
+## PCA of `r params$experiment_name`
+The plots below split samples by `r params$separator_variable` to demonstrate their loadings along each principal component, informing the pattern each principle component is capturing in relation to design variables. 
+
+``` {r displayfacetplots, out.width="150%", warning=FALSE, echo=FALSE}
+include_graphics(facetplotpng)
+
+```
+
+## `r genename` in PCA 
+
+```{r PCAcalculatepercentile, echo=FALSE}
+PCA_percentile_report <- c()
+for(PC in c(3:(params$num_meaningful_pcs+2))){
+  PCA_percentile_report[[length(PCA_percentile_report)+1]]<- paste(round(mean(pca[,PC] < subset(pca,GeneName==genename)[,PC] ) ,2)," percentile for PC", (PC-2), separator="")
+}
+```
+
+In the violin plot (left), `r genename` being at the top of the distribution of PC loadings indicates strong agreement with the patterns determined by that principal component. A loading near 0 indicates that `r genename` expression does not vary in relation to that pattern, and a loading at the bottom of the distribution suggests that `r genename` expression follows the opposite expression pattern described by that principal component. Compared to the distribution of loadings for all genes examined, `r genename` is loaded in the `r PCA_percentile_report`
+
+While it is known that the replicate effect is the dominating source of variance in this experiment, one can infer if `r genename` follows the expression pattern between replicates captured by PC1 with the plot (right) of all samples' `r genename` expression levels against their PC1 loadings. If the samples organize in a linear manner,  `r genename` expression is affected by the replicate effect described by PC1. The separator and treatment of the samples are provided as supplementary information. 
+
+
+```{r showGeneinPCA, echo=FALSE,out.width=c('50%', '50%'), fig.show='hold'}
+
+plot1_PCAviolin
+
+plot2_repeffect 
+
+
+```
+
+
+## `r genename` expression
+
+```{r showExpressionPlot,echo=FALSE,warning=FALSE}
+
+plot3_expression
+
+```
+
+## Effect of klf9-knockout on `r genename` expression
+DESeq2 was performed on all wildtype (WT) against all *klf9*-knockout (KO) samples at each time. Each run used PC1 as a covariant to underscore the effect on gene expression of the *klf9*-knockout at that time isolated from the replicate effect. Genes with a positive fold change are upregulated in *klf9* knockouts.
+
+The plots below demonstrates differential expression of `r genename` due to the *klf9*-knockout at each time both in the context of all 24,873 genes summarized in the three analyses and alone. Low gene counts (i.e. <100) make log2FoldChange a less reliable measure of differential expression.
+
+```{r showDESEQPLOTS, echo=FALSE,warning=FALSE, out.width=c('50%','50%'), fig.show='hold'}
+
+plot4_DESEQViolin
+
+plot5_DESEQ
+```
+Another run of DESEQ identified differential expression in *klf9*-knockout samples from all times vs. all wildtype samples. Both PC1 and time were used as covariants to isolate the effect of the *klf9*-knockout on gene expression across the experiment. `r genename` is highlighted in green. 
+
+```{r showMAplot, echo=FALSE,warning=FALSE}
+
+plot6_MA
+
+  ```
+

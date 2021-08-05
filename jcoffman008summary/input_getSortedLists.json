@@ -1,0 +1,12 @@
+{
+  "lfcSE_cutoff_pct":0.15,
+  "baseMean_cutoff_pct":0.1,
+
+  "filepath": {
+      "loading_scores":"data/jcoffman_008_merged_nogeneduplicates_meaningful_pc_loading_scores.txt",
+      "deseq": "data/jcoffman_008.klf9_multiTime_2021_merged_nogeneduplicates_PC1_time.DESeq2_out.tsv",
+      "deseq3hb":"data/jcoffman_008.klf9_multiTime_2021_merged_3hb_nogeneduplicates.DESeq2_out.tsv",
+      "deseqlightson": "data/jcoffman_008.klf9_multiTime_2021_merged_lightson_nogeneduplicates.DESeq2_out.tsv",
+      "deseq2.5ha":"data/jcoffman_008.klf9_multiTime_2021_merged_2.5ha_nogeneduplicates.DESeq2_out.tsv"
+  }
+}
