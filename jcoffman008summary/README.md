@@ -55,3 +55,11 @@ USAGE: (sample GO): Rscript jcoffman008GOSummary.R "GO:0007601"
       		(technically any tag after the GO term that isn't "log2fc" will result in the script showing z score )
 	- edit input_jcoffman008GOsummary.json to change filepaths
 OUTPUT: creates the GO_summaries directory and populates it with an additional png each time it is run with a unique GO term. If "znorm", is in the file name, the png will demonstrate the z-normalized transcript count of all genes in all jcoffman008 samples, separated by time and further by klf9 knockouts vs. wildtype samples. Otherwise, the png will be a figure of 3 violin plots demonstrating the log fold change of all genes in the GO in the three time-separated DESEQ analyses. The boxplot juxtaposed over the violin plots provide the 5-number summary of the same data. 
+
+### REVIGO TreeMap Visualizations 
+PURPOSE: Uses Revigo clustering algorithm to summarize and visualize set of enriched Gene Ontology groups. File mostly written by Revigo webtool- I changed the settings in the treemap function call to enhance the readabiltiy of the visualization.
+
+USAGE: Run Revigo webtool (http://revigo.irb.hr/) (provided list of GO groups and FDRs from results of GSEA or GOrilla), which yields a file nearly identical to RevigoTreeMap.R this with revigo.data object populated specific to the data-- replace revigo.data in RevigoTreeMap.R with those lines then run Rscript RevigoTreeMap.R
+
+OUTPUT: Generates revigo_treemap.pdf with TreeMap visualization. 
+
